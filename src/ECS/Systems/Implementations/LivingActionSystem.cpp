@@ -117,8 +117,8 @@ uint32_t VillagerMoveToPos(LivingAction& action)
 	if (!stillMoving)
 	{
 		registry.Remove<MoveStateFinalStepTag, MoveStateArrivedTag>(entity);
-		Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top,
-		                                                      VillagerStates::DecideWhatToDo, true);
+		Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top, VillagerStates::DecideWhatToDo,
+		                                                      true);
 	}
 	return 0;
 }
