@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 
+#include <entt/entity/entity.hpp>
 #include <glm/mat4x4.hpp>
 #include <spdlog/common.h>
 
@@ -115,6 +116,8 @@ private:
 	bool _paused {true};
 	glm::ivec2 _mousePosition;
 	bool _handGripping;
+	std::optional<entt::entity> _handHeldEntity; ///< scenery prop currently carried by the god hand, if any
+	bool _handGrabActive {false};                ///< toggled by the grab key; on = try to pick up / keep holding
 	std::optional<std::pair</* frame number */ uint32_t, /* output */ std::filesystem::path>> _requestScreenshot;
 };
 } // namespace openblack

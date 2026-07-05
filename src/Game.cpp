@@ -36,6 +36,7 @@
 #include "Debug/DebugGuiInterface.h"
 #include "ECS/Archetypes/PlayerArchetype.h"
 #include "ECS/Components/CameraBookmark.h"
+#include "ECS/Components/RigidBody.h"
 #include "ECS/Map.h"
 #include "ECS/Registry.h"
 #include "ECS/Systems/CameraBookmarkSystemInterface.h"
@@ -170,6 +171,12 @@ bool Game::ProcessEvents(const SDL_Event& event) noexcept
 			break;
 		case SDLK_p:
 			_paused = !_paused;
+			break;
+		case SDLK_g:
+			if (event.key.repeat == 0)
+			{
+				_handGrabActive = !_handGrabActive; // toggle god-hand grab: pick up on, drop off
+			}
 			break;
 		case SDLK_F1:
 			Locator::rendererInterface::value().SetDebug(!Locator::rendererInterface::value().GetDebug());
@@ -356,6 +363,7 @@ bool Game::Update() noexcept
 		// Update Hand and intersection point
 		ecs::components::Transform intersectionTransform {};
 		{
+			std::optional<entt::entity> hoveredEntity;
 			const auto screenSize =
 			    Locator::windowing::has_value() ? Locator::windowing::value().GetSize() : glm::zero<glm::ivec2>();
 			const auto scale = glm::vec3(50.0f, 50.0f, 50.0f);
@@ -372,6 +380,10 @@ bool Game::Update() noexcept
 					if (auto hit = dynamicsSystem.RayCastClosestHit(rayOrigin, rayDirection, 1e10f))
 					{
 						intersectionTransform = hit->first;
+						if (hit->second.type == RigidBodyType::Entity)
+						{
+							hoveredEntity = static_cast<entt::entity>(hit->second.id);
+						}
 					}
 					else // For the water
 					{
@@ -403,6 +415,50 @@ bool Game::Update() noexcept
 				handTransform.rotation = intersectionTransform.rotation * handTransform.rotation;
 				handTransform.position += intersectionTransform.rotation * handOffset;
 				Locator::entitiesRegistry::value().SetDirty();
+			}
+
+			// God-hand pickup of scenery props. While grab mode is on, carry a rigid-body entity under
+			// the hand; drop it when grab mode is switched off. The held body is pulled out of the
+			// physics world while carried so the hand's own raycast can't hit it (which would otherwise
+			// make it climb toward the camera).
+			auto& registry = Locator::entitiesRegistry::value();
+			auto& dynamics = Locator::dynamicsSystem::value();
+			if (_handGrabActive && !_handHeldEntity.has_value() && hoveredEntity.has_value() &&
+			    registry.Valid(*hoveredEntity) && registry.AllOf<ecs::components::RigidBody>(*hoveredEntity))
+			{
+				_handHeldEntity = hoveredEntity;
+				dynamics.RemoveRigidBody(&registry.Get<ecs::components::RigidBody>(*_handHeldEntity).handle);
+			}
+
+			if (_handHeldEntity.has_value())
+			{
+				const bool stillValid =
+				    registry.Valid(*_handHeldEntity) &&
+				    registry.AllOf<ecs::components::RigidBody, ecs::components::Transform>(*_handHeldEntity);
+				if (stillValid)
+				{
+					const glm::vec3 holdPosition = intersectionTransform.position + glm::vec3(0.0f, 3.0f, 0.0f);
+					auto& body = registry.Get<ecs::components::RigidBody>(*_handHeldEntity);
+					btTransform bodyTransform;
+					bodyTransform.setIdentity();
+					bodyTransform.setOrigin(btVector3(holdPosition.x, holdPosition.y, holdPosition.z));
+					body.motionState->setWorldTransform(bodyTransform);
+					body.handle.setWorldTransform(bodyTransform);
+					body.handle.setLinearVelocity(btVector3(0.0f, 0.0f, 0.0f));
+					body.handle.setAngularVelocity(btVector3(0.0f, 0.0f, 0.0f));
+					registry.Get<ecs::components::Transform>(*_handHeldEntity).position = holdPosition;
+					registry.SetDirty();
+				}
+
+				// Release: grab mode turned off, or the object disappeared. Put it back in the sim.
+				if (!_handGrabActive || !stillValid)
+				{
+					if (stillValid)
+					{
+						dynamics.AddRigidBody(&registry.Get<ecs::components::RigidBody>(*_handHeldEntity).handle);
+					}
+					_handHeldEntity.reset();
+				}
 			}
 		}
 

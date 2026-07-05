@@ -75,12 +75,17 @@ void DynamicsSystem::AddRigidBody(btRigidBody* object)
 	_world->addRigidBody(object);
 }
 
+void DynamicsSystem::RemoveRigidBody(btRigidBody* object)
+{
+	_world->removeRigidBody(object);
+}
+
 void DynamicsSystem::RegisterRigidBodies()
 {
 	auto& registry = Locator::entitiesRegistry::value();
-	registry.Each<RigidBody>([this](RigidBody& body) {
+	registry.Each<RigidBody>([this](entt::entity entity, RigidBody& body) {
 		body.handle.setUserIndex(static_cast<int>(RigidBodyType::Entity));
-		body.handle.setUserIndex2(0);
+		body.handle.setUserIndex2(static_cast<int>(entity)); // so RayCastClosestHit can report which entity was hit
 		body.handle.setUserPointer(this);
 		AddRigidBody(&body.handle);
 	});
