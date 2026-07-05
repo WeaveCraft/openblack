@@ -19,6 +19,7 @@
 #include "3D/L3DMesh.h"
 #include "3D/LandIslandInterface.h"
 #include "ECS/Components/Mesh.h"
+#include "ECS/Components/Town.h"
 #include "ECS/Components/Transform.h"
 #include "ECS/Components/Villager.h"
 #include "ECS/Components/WallHug.h"
@@ -39,6 +40,15 @@ void PathFinding::Draw() noexcept
 {
 	ImGui::TextWrapped(
 	    "Select Villager by left clicking on it, then select a pathfinding action and right click the destination");
+
+	{
+		using namespace ecs::components;
+		auto& registry = Locator::entitiesRegistry::value();
+		ImGui::Separator();
+		ImGui::Text("Village food stores:");
+		registry.Each<const Town>([](const Town& town) { ImGui::Text("  Town %u: food %u", town.id, town.foodAmount); });
+		ImGui::Separator();
+	}
 
 	const uint8_t numChildren = 2;
 	const float rounding = 5.0f;
@@ -73,6 +83,13 @@ void PathFinding::Draw() noexcept
 			ImGui::DragFloat3("Position", glm::value_ptr(transform.position));
 			ImGui::DragFloat2("Goal", glm::value_ptr(wallHug.goal));
 			ImGui::DragFloat("Speed", &wallHug.speed);
+
+			const auto& villager = registry.Get<Villager>(_selectedVillager.value());
+			ImGui::Text("Hunger: %u", villager.hunger);
+			if (villager.town != entt::null && registry.Valid(villager.town) && registry.AllOf<Town>(villager.town))
+			{
+				ImGui::Text("Village food: %u", registry.Get<Town>(villager.town).foodAmount);
+			}
 		}
 	}
 	else

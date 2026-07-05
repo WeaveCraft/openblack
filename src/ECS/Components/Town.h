@@ -13,6 +13,8 @@
 #include <string>
 #include <unordered_map>
 
+#include <entt/fwd.hpp>
+
 namespace openblack::ecs::components
 {
 
@@ -22,6 +24,7 @@ struct Town
 	std::unordered_map<std::string, float> beliefs;
 	bool uninhabitable = false;
 	std::set<entt::entity> homelessVillagers;
+	uint32_t foodAmount = 500; ///< shared village food store; villagers draw from it when they eat
 };
 
 } // namespace openblack::ecs::components

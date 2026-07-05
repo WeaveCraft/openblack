@@ -41,7 +41,7 @@ entt::entity VillagerArchetype::Create([[maybe_unused]] const glm::vec3& abodePo
 	registry.Assign<Transform>(entity, position, glm::eulerAngleY(glm::radians(180.0f)), glm::vec3(1.0));
 	registry.Assign<Mobile>(entity);
 	const uint32_t health = 100;
-	const uint32_t hunger = 100;
+	const uint32_t hunger = Locator::rng::value().NextValue<uint32_t>(40, 100); // vary so villagers don't all starve in lockstep
 
 	const auto lifeStage = age < 18 ? Villager::LifeStage::Child : Villager::LifeStage::Adult;
 	const auto sex = info.villagerNumber == VillagerNumber::Housewife ? Villager::Sex::FEMALE : Villager::Sex::MALE;

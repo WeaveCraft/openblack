@@ -20,6 +20,7 @@
 
 #include "Common/RandomNumberManager.h"
 #include "ECS/Components/LivingAction.h"
+#include "ECS/Components/Town.h"
 #include "ECS/Components/Transform.h"
 #include "ECS/Components/Villager.h"
 #include "ECS/Components/WallHug.h"
@@ -63,6 +64,15 @@ static constexpr uint16_t k_WanderCooldownTurns = 20;
 static constexpr float k_WanderWorldBoundMin = 30.0f;
 static constexpr float k_WanderWorldBoundMax = 5090.0f;
 
+// Hunger need cycle: villagers get hungry, walk to the village centre to eat, then carry on.
+static constexpr uint32_t k_HungerThreshold = 30;  // below this a villager goes to eat
+static constexpr uint32_t k_HungerFull = 100;      // hunger value restored after eating
+static constexpr uint16_t k_EatDurationTurns = 15; // turns spent eating at the village centre
+// Shared village food store, drawn down by meals and slowly replenished each turn.
+static constexpr uint32_t k_FoodPerMeal = 40;         // village food consumed per villager meal
+static constexpr uint32_t k_TownFoodRegenPerTurn = 2; // village food produced per turn
+static constexpr uint32_t k_TownFoodMax = 800;        // cap on stored village food
+
 // PoC: pick a random nearby point and hand it to the PathfindingSystem the same way the
 // debug "Move To Point" tool does (see Debug/PathFinding.cpp), then wait in MoveToPos.
 uint32_t VillagerDecideWhatToDo(LivingAction& action)
@@ -80,17 +90,34 @@ uint32_t VillagerDecideWhatToDo(LivingAction& action)
 
 	const auto& transform = registry.Get<Transform>(entity);
 	auto& wallHug = registry.Get<WallHug>(entity);
-	auto& rng = Locator::rng::value();
-
-	const float angle = rng.NextValue(0.0f, glm::two_pi<float>());
-	const float distance = rng.NextValue(0.0f, k_WanderRadius);
 	const auto& villager = registry.Get<Villager>(entity);
-	auto origin = glm::xz(transform.position); // fallback if the villager has no valid town
-	if (villager.town != entt::null && registry.Valid(villager.town) && registry.AllOf<Transform>(villager.town))
+
+	// The village centre doubles as the place villagers go to eat. Falls back to the current
+	// position if the villager has no valid town.
+	auto centre = glm::xz(transform.position);
+	const bool hasTown =
+	    villager.town != entt::null && registry.Valid(villager.town) && registry.AllOf<Transform>(villager.town);
+	if (hasTown)
 	{
-		origin = glm::xz(registry.Get<Transform>(villager.town).position);
+		centre = glm::xz(registry.Get<Transform>(villager.town).position);
 	}
-	auto goal = origin + glm::vec2(glm::cos(angle), glm::sin(angle)) * distance;
+
+	glm::vec2 goal;
+	auto nextState = VillagerStates::MoveToPos;
+	if (villager.hunger < k_HungerThreshold && hasTown)
+	{
+		// Hungry: head to the village centre to eat.
+		goal = centre;
+		nextState = VillagerStates::GotoStoragePitForFood;
+	}
+	else
+	{
+		// Content: wander around the village centre.
+		auto& rng = Locator::rng::value();
+		const float angle = rng.NextValue(0.0f, glm::two_pi<float>());
+		const float distance = rng.NextValue(0.0f, k_WanderRadius);
+		goal = centre + glm::vec2(glm::cos(angle), glm::sin(angle)) * distance;
+	}
 	goal = glm::clamp(goal, glm::vec2(k_WanderWorldBoundMin), glm::vec2(k_WanderWorldBoundMax));
 
 	wallHug.goal = goal;
@@ -100,7 +127,7 @@ uint32_t VillagerDecideWhatToDo(LivingAction& action)
 	registry.Remove<WallHugObjectReference>(entity);
 	registry.Assign<MoveStateLinearTag>(entity);
 
-	Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top, VillagerStates::MoveToPos, true);
+	Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top, nextState, true);
 	return 0;
 }
 
@@ -120,6 +147,56 @@ uint32_t VillagerMoveToPos(LivingAction& action)
 		Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top,
 		                                                      VillagerStates::DecideWhatToDo, true);
 	}
+	return 0;
+}
+
+// Hunger: walk to the village centre (the food spot); start eating on arrival. Mirrors MoveToPos.
+uint32_t VillagerGotoStoragePitForFood(LivingAction& action)
+{
+	auto& registry = Locator::entitiesRegistry::value();
+	const auto entity = registry.ToEntity(action);
+
+	const bool stillMoving =
+	    registry.AnyOf<MoveStateLinearTag, MoveStateOrbitTag, MoveStateExitCircleTag, MoveStateStepThroughTag>(entity);
+	if (!stillMoving)
+	{
+		registry.Remove<MoveStateFinalStepTag, MoveStateArrivedTag>(entity);
+		Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top, VillagerStates::EatFood, true);
+	}
+	return 0;
+}
+
+// Hunger: spend a few turns eating, restore hunger, then decide what to do next.
+uint32_t VillagerEatFood(LivingAction& action)
+{
+	if (action.turnsSinceStateChange < k_EatDurationTurns)
+	{
+		return 0; // still eating
+	}
+
+	auto& registry = Locator::entitiesRegistry::value();
+	const auto entity = registry.ToEntity(action);
+	auto& villager = registry.Get<Villager>(entity);
+
+	// Draw the meal from the village's shared food store. If it's empty the villager only half-sates,
+	// so a starving village visibly keeps sending hungry people back for more.
+	uint32_t restored = k_HungerFull;
+	if (villager.town != entt::null && registry.Valid(villager.town) && registry.AllOf<Town>(villager.town))
+	{
+		auto& town = registry.Get<Town>(villager.town);
+		if (town.foodAmount >= k_FoodPerMeal)
+		{
+			town.foodAmount -= k_FoodPerMeal;
+		}
+		else
+		{
+			town.foodAmount = 0;
+			restored = k_HungerThreshold; // not enough food: barely sated, will need to eat again soon
+		}
+	}
+	villager.hunger = restored;
+	Locator::livingActionSystem::value().VillagerSetState(action, LivingAction::Index::Top, VillagerStates::DecideWhatToDo,
+	                                                      true);
 	return 0;
 }
 
@@ -239,7 +316,10 @@ const static std::array<VillagerStateTableEntry, static_cast<size_t>(VillagerSta
     /* FLEEING_AND_LOOKING_AT_OBJECT_REACTION */ k_TodoEntry,
     /* GOTO_STORAGE_PIT_FOR_DROP_OFF */ k_TodoEntry,
     /* ARRIVES_AT_STORAGE_PIT_FOR_DROP_OFF */ k_TodoEntry,
-    /* GOTO_STORAGE_PIT_FOR_FOOD */ k_TodoEntry,
+    /* GOTO_STORAGE_PIT_FOR_FOOD */
+    VillagerStateTableEntry {
+        .state = &VillagerGotoStoragePitForFood,
+    },
     /* ARRIVES_AT_STORAGE_PIT_FOR_FOOD */ k_TodoEntry,
     /* ARRIVES_AT_HOME_WITH_FOOD */ k_TodoEntry,
     /* GO_HOME */ k_TodoEntry,
@@ -327,7 +407,10 @@ const static std::array<VillagerStateTableEntry, static_cast<size_t>(VillagerSta
     /* CHILD_FOLLOWS_MOTHER */ k_TodoEntry,
     /* CHILD_BECOMES_ADULT */ k_TodoEntry,
     /* SITS_DOWN_TO_DINNER */ k_TodoEntry,
-    /* EAT_FOOD */ k_TodoEntry,
+    /* EAT_FOOD */
+    VillagerStateTableEntry {
+        .state = &VillagerEatFood,
+    },
     /* EAT_FOOD_AT_HOME */ k_TodoEntry,
     /* GOTO_BED_AT_HOME */ k_TodoEntry,
     /* SLEEPING_AT_HOME */ k_TodoEntry,
@@ -475,6 +558,23 @@ void LivingActionSystem::Update()
 	auto& registry = Locator::entitiesRegistry::value();
 
 	registry.Each<LivingAction>([](LivingAction& action) { ++action.turnsSinceStateChange; });
+
+	// Hunger need: villagers get hungrier every turn (VillagerDecideWhatToDo sends them to eat once low).
+	registry.Each<Villager>([](Villager& villager) {
+		if (villager.hunger > 0)
+		{
+			--villager.hunger;
+		}
+	});
+
+	// Villages slowly produce food again, so a drained town can recover over time.
+	registry.Each<Town>([](Town& town) {
+		town.foodAmount += k_TownFoodRegenPerTurn;
+		if (town.foodAmount > k_TownFoodMax)
+		{
+			town.foodAmount = k_TownFoodMax;
+		}
+	});
 
 	// TODO(#475): process food speedup
 
