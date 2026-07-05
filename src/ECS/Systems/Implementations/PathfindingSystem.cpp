@@ -206,7 +206,7 @@ bool OrbitScanForObstacle(entt::entity entity, bool clockwise, Transform& transf
 		                         obstacleFixed.boundingRadius * obstacleFixed.boundingRadius;
 		if (closeEnough)
 		{
-			// TODO: CircleSquareSweep is unimplemented. Degrade gracefully for the wander PoC instead of
+			// TODO(WeaveCraft): CircleSquareSweep is unimplemented. Degrade gracefully for the wander PoC instead of
 			// crashing, returning out of this scope so the external following code does not run.
 			AbandonMove(registry, entity);
 			return false;

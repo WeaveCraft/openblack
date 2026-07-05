@@ -63,13 +63,15 @@ static constexpr uint16_t k_WanderCooldownTurns = 20;
 static constexpr float k_WanderWorldBoundMin = 30.0f;
 static constexpr float k_WanderWorldBoundMax = 5090.0f;
 
+namespace
+{
 // PoC: pick a random nearby point and hand it to the PathfindingSystem the same way the
 // debug "Move To Point" tool does (see Debug/PathFinding.cpp), then wait in MoveToPos.
 uint32_t VillagerDecideWhatToDo(LivingAction& action)
 {
 	if (action.turnsSinceStateChange < k_WanderCooldownTurns)
 	{
-		// TODO: play a "catch breath" idle animation here (lean forward, breathe) during the cooldown
+		// TODO(WeaveCraft): play a "catch breath" idle animation here (lean forward, breathe) during the cooldown
 		// once villager animation playback exists. The transitionAnimation hook in k_VillagerStateTable
 		// is the intended home for it; the Mesh component has no animation state today.
 		return 0;
@@ -122,6 +124,7 @@ uint32_t VillagerMoveToPos(LivingAction& action)
 	}
 	return 0;
 }
+} // namespace
 
 struct VillagerStateTableEntry
 {
