@@ -510,8 +510,7 @@ void LivingActionSystem::VillagerSetState(LivingAction& action, LivingAction::In
 	}
 
 	[[maybe_unused]] auto& registry = Locator::entitiesRegistry::value();
-	SPDLOG_LOGGER_TRACE(spdlog::get("ai"), "Villager #{}: Setting state {} -> {}",
-	                    static_cast<int>(registry.ToEntity(action)),
+	SPDLOG_LOGGER_TRACE(spdlog::get("ai"), "Villager #{}: Setting state {} -> {}", static_cast<int>(registry.ToEntity(action)),
 	                    k_VillagerStateStrings.at(static_cast<size_t>(previousState)),
 	                    k_VillagerStateStrings.at(static_cast<size_t>(state)));
 
