@@ -53,10 +53,11 @@ uint32_t VillagerCreated(LivingAction& action)
 	return 0;
 }
 
-// Proof-of-concept wander behaviour: how far (in world units) an idle villager picks its
-// next random destination.
-static constexpr float k_WanderMinDistance = 10.0f;
-static constexpr float k_WanderMaxDistance = 40.0f;
+// Proof-of-concept wander behaviour: how far (in world units) an idle villager may roam from
+// its village centre when picking a destination.
+static constexpr float k_WanderRadius = 40.0f;
+// Idle pause (in turns) before an arrived/abandoned villager picks a new destination.
+static constexpr uint16_t k_WanderCooldownTurns = 20;
 // Keep goals clear of the map edges so the pathfinder's neighbouring-cell lookups stay in
 // bounds (the movement grid is MapInterface::k_GridSize cells, each 10 world units wide).
 static constexpr float k_WanderWorldBoundMin = 30.0f;
@@ -66,6 +67,14 @@ static constexpr float k_WanderWorldBoundMax = 5090.0f;
 // debug "Move To Point" tool does (see Debug/PathFinding.cpp), then wait in MoveToPos.
 uint32_t VillagerDecideWhatToDo(LivingAction& action)
 {
+	if (action.turnsSinceStateChange < k_WanderCooldownTurns)
+	{
+		// TODO: play a "catch breath" idle animation here (lean forward, breathe) during the cooldown
+		// once villager animation playback exists. The transitionAnimation hook in k_VillagerStateTable
+		// is the intended home for it; the Mesh component has no animation state today.
+		return 0;
+	}
+
 	auto& registry = Locator::entitiesRegistry::value();
 	const auto entity = registry.ToEntity(action);
 
@@ -74,8 +83,13 @@ uint32_t VillagerDecideWhatToDo(LivingAction& action)
 	auto& rng = Locator::rng::value();
 
 	const float angle = rng.NextValue(0.0f, glm::two_pi<float>());
-	const float distance = rng.NextValue(k_WanderMinDistance, k_WanderMaxDistance);
-	const auto origin = glm::xz(transform.position);
+	const float distance = rng.NextValue(0.0f, k_WanderRadius);
+	const auto& villager = registry.Get<Villager>(entity);
+	auto origin = glm::xz(transform.position); // fallback if the villager has no valid town
+	if (villager.town != entt::null && registry.Valid(villager.town) && registry.AllOf<Transform>(villager.town))
+	{
+		origin = glm::xz(registry.Get<Transform>(villager.town).position);
+	}
 	auto goal = origin + glm::vec2(glm::cos(angle), glm::sin(angle)) * distance;
 	goal = glm::clamp(goal, glm::vec2(k_WanderWorldBoundMin), glm::vec2(k_WanderWorldBoundMax));
 

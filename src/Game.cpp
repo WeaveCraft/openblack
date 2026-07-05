@@ -66,7 +66,7 @@ using namespace openblack;
 using namespace openblack::lhscriptx;
 using namespace std::chrono_literals;
 
-const std::string k_WindowTitle = "openblack";
+const std::string k_WindowTitle = "Spolmit: Genesis";
 
 Game* Game::sInstance = nullptr;
 
