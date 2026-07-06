@@ -71,8 +71,8 @@ void IterateStepAroundObstacle(Transform& transform, WallHug& wallHug, const Fix
 	InitializeStep(transform, wallHug, angle + angleStep * clockwiseModifier);
 }
 
-/// The wall-hug/orbit movement port has unfinished branches. For the villager-wander
-/// proof-of-concept we degrade gracefully instead of crashing: stop the villager where it is
+/// The wall-hug/orbit movement port has unfinished branches. To keep villager wandering
+/// working, we degrade gracefully instead of crashing: stop the villager where it is
 /// and drop all of its movement state. The LivingActionSystem's MoveToPos handler then sees no
 /// active move tags, treats the villager as "arrived", and picks a new destination.
 void AbandonMove(ecs::Registry& registry, entt::entity entity)
@@ -206,7 +206,7 @@ bool OrbitScanForObstacle(entt::entity entity, bool clockwise, Transform& transf
 		                         obstacleFixed.boundingRadius * obstacleFixed.boundingRadius;
 		if (closeEnough)
 		{
-			// TODO(WeaveCraft): CircleSquareSweep is unimplemented. Degrade gracefully for the wander PoC instead of
+			// TODO(#864): CircleSquareSweep is unimplemented. Degrade gracefully instead of
 			// crashing, returning out of this scope so the external following code does not run.
 			AbandonMove(registry, entity);
 			return false;
@@ -284,8 +284,8 @@ bool OrbitScanForObstacle(entt::entity entity, bool clockwise, Transform& transf
 
 					if (t < 0)
 					{
-						// Unfinished orbit geometry produced a negative step count. Degrade gracefully for
-						// the wander PoC (bail out of the scan) rather than asserting and crashing.
+						// Unfinished orbit geometry produced a negative step count. Degrade gracefully
+						// (bail out of the scan) rather than asserting and crashing.
 						AbandonMove(registry, entity);
 						return false;
 					}
@@ -420,7 +420,7 @@ void PathfindingSystem::Update()
 
 	// 3.  ORBIT_CW, ORBIT_CCW, EXIT_CIRCLE_CW, EXIT_CIRCLE_CCW:
 	//         Orbiting requires a recorded obstacle to hug. Handling a missing one is unimplemented
-	//         in the port; for the wander PoC, abandon those moves instead of crashing. Collect
+	//         in the port; abandon those moves instead of crashing. Collect
 	//         first, then remove, so we never mutate the pool being iterated for a non-current entity.
 	{
 		std::vector<entt::entity> missingObstacle;
@@ -489,7 +489,7 @@ void PathfindingSystem::Update()
 	registry.Each<const MoveStateOrbitTag>([&registry](entt::entity entity, [[maybe_unused]] const MoveStateOrbitTag& state) {
 		if (!registry.AnyOf<WallHugObjectReference>(entity))
 		{
-			// TODO: circle-to-circle transition is unimplemented. Degrade gracefully for the wander PoC.
+			// TODO(#865): circle-to-circle transition is unimplemented. Degrade gracefully.
 			AbandonMove(registry, entity);
 		}
 	});

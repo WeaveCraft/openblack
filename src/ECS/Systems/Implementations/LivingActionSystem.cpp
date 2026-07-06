@@ -53,7 +53,7 @@ uint32_t VillagerCreated(LivingAction& action)
 	return 0;
 }
 
-// Proof-of-concept wander behaviour: how far (in world units) an idle villager may roam from
+// Wander behaviour: how far (in world units) an idle villager may roam from
 // its village centre when picking a destination.
 static constexpr float k_WanderRadius = 40.0f;
 // Idle pause (in turns) before an arrived/abandoned villager picks a new destination.
@@ -65,13 +65,13 @@ static constexpr float k_WanderWorldBoundMax = 5090.0f;
 
 namespace
 {
-// PoC: pick a random nearby point and hand it to the PathfindingSystem the same way the
+// Pick a random nearby point and hand it to the PathfindingSystem the same way the
 // debug "Move To Point" tool does (see Debug/PathFinding.cpp), then wait in MoveToPos.
 uint32_t VillagerDecideWhatToDo(LivingAction& action)
 {
 	if (action.turnsSinceStateChange < k_WanderCooldownTurns)
 	{
-		// TODO(WeaveCraft): play a "catch breath" idle animation here (lean forward, breathe) during the cooldown
+		// TODO(#863): play a "catch breath" idle animation here (lean forward, breathe) during the cooldown
 		// once villager animation playback exists. The transitionAnimation hook in k_VillagerStateTable
 		// is the intended home for it; the Mesh component has no animation state today.
 		return 0;
@@ -106,7 +106,7 @@ uint32_t VillagerDecideWhatToDo(LivingAction& action)
 	return 0;
 }
 
-// PoC: wait until the PathfindingSystem has walked us to the goal, then decide again.
+// Wait until the PathfindingSystem has walked us to the goal, then decide again.
 uint32_t VillagerMoveToPos(LivingAction& action)
 {
 	auto& registry = Locator::entitiesRegistry::value();
