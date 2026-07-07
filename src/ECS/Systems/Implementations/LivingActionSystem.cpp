@@ -62,6 +62,8 @@ static constexpr uint16_t k_WanderCooldownTurns = 20;
 // bounds (the movement grid is MapInterface::k_GridSize cells, each 10 world units wide).
 static constexpr float k_WanderWorldBoundMin = 30.0f;
 static constexpr float k_WanderWorldBoundMax = 5090.0f;
+// Hunger (out of 100) below which a villager stops wandering and looks for food.
+static constexpr uint32_t k_HungryThreshold = 40;
 
 namespace
 {
@@ -75,6 +77,19 @@ uint32_t VillagerDecideWhatToDo(LivingAction& action)
 		// once villager animation playback exists. The transitionAnimation hook in k_VillagerStateTable
 		// is the intended home for it; the Mesh component has no animation state today.
 		return 0;
+	}
+
+	// If we're hungry, react to that before falling through to wandering.
+	{
+		auto& registry = Locator::entitiesRegistry::value();
+		const auto entity = registry.ToEntity(action);
+		const auto& villager = registry.Get<Villager>(entity);
+		if (villager.hunger < k_HungryThreshold)
+		{
+			SPDLOG_LOGGER_WARN(spdlog::get("ai"), "Villager #{}: hungry (hunger={})", static_cast<uint32_t>(entity),
+			                   villager.hunger);
+			return 0; // TODO: go find food instead of idling
+		}
 	}
 
 	auto& registry = Locator::entitiesRegistry::value();
@@ -480,6 +495,20 @@ void LivingActionSystem::Update()
 	registry.Each<LivingAction>([](LivingAction& action) { ++action.turnsSinceStateChange; });
 
 	// TODO(#475): process food speedup
+	// Drain villager hunger a little at a time. hunger is a uint32_t that starts at 100,
+	// so guard against unsigned underflow (subtracting from 0 would wrap to ~4 billion).
+	// s_hungerTick is a turn clock: at ~10 turns/sec, draining once every 50 turns empties
+	// a full bar in ~85 minutes. Tune the 50 to taste.
+	static uint32_t s_hungerTick = 0;
+	if (++s_hungerTick % 50 == 0)
+	{
+		registry.Each<Villager>([](Villager& villager) {
+			if (villager.hunger > 0)
+			{
+				villager.hunger -= 1;
+			}
+		});
+	}
 
 	registry.Each<const Villager, LivingAction>([this]([[maybe_unused]] const Villager& villager, LivingAction& action) {
 		VillagerCallValidate(action, LivingAction::Index::Top);
